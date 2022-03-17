@@ -1,3 +1,4 @@
+from re import T
 from tkinter import *
 from tkinter import ttk
 import tkinter as tk
@@ -22,8 +23,26 @@ com_desc=[]
 com_portwithdesc=[]
 com_dict = {}
 
-data3 = {'time': [], 'data': []}  
-df3 = DataFrame(data3,columns=['time','data'])
+bg_color = "#3b3838"
+Text_color = "#ffffff"
+bg2_color = "#525252"
+bg3_color = "#9e9e9e"
+line_color = "#4570be"
+
+plt.rcParams.update({'text.color': Text_color,
+                     'axes.labelcolor': Text_color,
+                     'axes.titlecolor': Text_color,
+                     'grid.color' : bg2_color,
+                     'xtick.color': bg3_color,
+                     'xtick.labelcolor':Text_color,
+                     'ytick.color': bg3_color,
+                     'ytick.labelcolor':Text_color,
+                     'hatch.color': bg2_color,
+                     'legend.edgecolor': bg2_color,
+                     'scatter.edgecolors':bg2_color})
+
+df = DataFrame()
+df_last= DataFrame()
 continuePlotting = False 
  
 def change_state(): 
@@ -32,32 +51,69 @@ def change_state():
         continuePlotting = False 
     else: 
         continuePlotting = True 
-     
+
+def serial_list():
+    global com_dict
+    global com_desc
+    global com_portwithdesc
+    com_dict = []
+    com_desc = []
+    com_portwithdesc = []
+    ports = serial.tools.list_ports.comports()
+    for x, y, z in sorted(ports):
+        print("{}: {} [{}]".format(x,y,z))
+        com_port.append(x)
+        com_desc.append(y)
+        com_portwithdesc.append(x +" "+ y)
+    com_dict = dict(zip(com_port,com_desc))
+    print(com_portwithdesc)
+
 def serial_read():
-    global data3
-    global df3
+    global df
+    global df_last
     start = time.time()
-    x = []
-    y = []
-    ser = serial.Serial(port = Serial_port, baudrate=115200,bytesize=8, timeout=0.005, stopbits=serial.STOPBITS_ONE)
+    ser = serial.Serial(port = Serial_port, baudrate=115200,bytesize=8, timeout=0.01, stopbits=serial.STOPBITS_ONE)
     while continuePlotting:
         if(ser.in_waiting > 0):
             # Read data out of the buffer until a carraige return / new line is found
             line = ser.readline()
             # Print the contents of the serial data
-            string = line.decode('Ascii')
-            print(f'print raw data{string}')
-            #num = re.findall(r"[-+]?\d*\.\d+|\d+", string)
-            num = float(string)
+            string = line.decode('utf-8').rstrip()
             end = time.time()
-            y.append(num)
             time_elapsed= end - start
-            x.append(time_elapsed)
-            new_data=pd.DataFrame({'time':[time_elapsed],'data':[num]})
-            df3 = pd.concat([df3,new_data])
-            print(f'add data to pd')
+            string = (f'time:{time_elapsed},') +string
+            n_dict , d_dict =sort_name_and_data(string,",",":")
+            df = pd.concat([df,dict_data(n_dict,d_dict)])
+            if(not(df.empty)):
+                df_last=df.tail(1)
     ser.close()
 
+def split_data(data,index):
+    x=[] 
+    x = data.split(index)
+    return x
+
+def sort_name_and_data(data,index_name,index_data):
+    name  = []
+    value = []
+    x=split_data(data,index_name)
+    for i in x:
+        y=split_data(i,index_data)
+        name.append(y[0])
+        try:
+            value.append(float(y[1]))
+        except:
+            value.append(y[1])
+    # for n in range(0,len(name)):
+    #     print(f'{name[n]} : {value[n]}')
+    return name,value
+
+def dict_data(dict_name,dict_data):
+    res = {dict_name[i]: [dict_data[i]] for i in range(len(dict_name))}
+    # print(res)
+    new_data=pd.DataFrame(res)
+    # print(new_data)
+    return new_data
 
 def all_camera():
     global index
@@ -79,20 +135,24 @@ def all_camera():
 def app():
     global cam_id
     global Serial_port
+
     def camera_stop():
+        if(not(continuePlotting)):
+            pass
         gui_handler()
         cam1.stop_cam()
 
     def camera_start():
+        if(continuePlotting):
+            camera_stop()
         print(f'current cam_id:{cam_id}')
         cam1.change_cam(int(cam_id))
-        show_frames()
         gui_handler()
-        root.mainloop()
 
     def showSetup():
         global cam_id
         global Serial_port
+        serial_list()
         setup = Tk()
         setup.title("Setup")
         setup.geometry("400x600+100+100")
@@ -107,6 +167,7 @@ def app():
             print(f'current cam_id:{cam_id}  current_selected:{choice.get()}')
             cam1.change_cam(int(cam_id))
             show_frames()
+            cam1.stop_cam()
         apply_cam_btn = Button(setup,text="Apply",command=apply_cam_setup)
         apply_cam_btn.grid(row=0,column=3)
 
@@ -125,7 +186,7 @@ def app():
         apply_serial_btn.grid(row=1,column=3)
 
     def show_frames():
-        while continuePlotting:
+        if(continuePlotting):
             # Get the latest frame and convert into Image
             cv2image= cv2.cvtColor(cam1.getImage(),cv2.COLOR_BGR2RGB)
             img = Image.fromarray(cv2image)
@@ -134,30 +195,21 @@ def app():
             label.imgtk = imgtk
             label.configure(image=imgtk)
             # Repeat after an interval to capture continiously
-            time.sleep(.01)
+            label.after(20, show_frames)
 
     # setup camera
     camera_array,camera_number= all_camera()
     cam1 = camera.camera(cam_id,1280,720)
 
-    # list port
-    ports = serial.tools.list_ports.comports()
-    for x, y, z in sorted(ports):
-        print("{}: {} [{}]".format(x,y,z))
-        com_port.append(x)
-        com_desc.append(y)
-        com_portwithdesc.append(x +" "+ y)
-    com_dict = dict(zip(com_port,com_desc))
-    print(com_portwithdesc)
-
-
+    #Serial list
+    serial_list()
     print(com_dict)
 
     #main windoes setup
     root = Tk()
     root.title("Robot control center")
     root.geometry("1280x720+100+100")
-    root.configure(bg='gray')
+    root.configure(bg=bg_color)
 
     # menu bar
     menubar= Menu(root)
@@ -169,8 +221,11 @@ def app():
     menubar.add_cascade(label='setting',menu=setting_menu)
 
     #camera
-    label =Label(root,bg='gray')
-    label.place(x=10, y=60)
+    radio_n = Label(root, text = "Camera")
+    radio_n.config(font =("circular", 32),bg=bg_color,fg=Text_color)
+    radio_n.place(x=30, y=40)
+    label =Label(root,bg=bg_color)
+    label.place(x=10, y=100)
 
     # start stop Button
     stop_btn = Button(text="Stop",command=camera_stop)
@@ -179,34 +234,69 @@ def app():
     start_btn = Button(text="Start",command=camera_start)
     start_btn.grid(row=0,column=0)
 
-    #sensor
-    figure1 = plt.Figure(figsize=(6,5), dpi=100)
-
+    #sensor plotter
+    radio_n = Label(root, text = "Radioactive sensor")
+    radio_n.config(font =("circular", 30),bg=bg_color,fg=Text_color)
+    radio_n.place(x=1350, y=60)
+    figure1 = plt.Figure(figsize=(6,5), dpi=100,facecolor = bg_color)
     ax = figure1.add_subplot(111) 
-    ax.set_xlabel("X axis") 
-    ax.set_ylabel("Y axis") 
-    ax.grid() 
- 
+    # ax.title('Radioactive sensor')
+    ax.set_xlabel("Sensor value") 
+    ax.set_ylabel("Time(s)") 
+    ax.margins(x=0, y=-0.25)
+    ax.set_facecolor(bg2_color)
     graph = FigureCanvasTkAgg(figure1, master=root) 
-    graph.get_tk_widget().place(x=1300, y=60)
- 
+    graph.get_tk_widget().place(x=1300, y=100)
+
+    #sensor text
+    voltage = "STOP"
+    connection = "Disconnected"
+    voltage_n = Label(root, text = "Voltage sensor")
+    voltage_n.config(font =("circular", 28),bg=bg_color,fg=Text_color)
+    voltage_n.place(x=1350, y=615)
+    voltage_v = Label(root, text=voltage,anchor='e')
+    voltage_v.config(font =("circular", 28),bg=bg_color,fg=Text_color)
+    voltage_v.place(x=1350, y=665)
+
+    Connection_n = Label(root, text = "Connection sensor")
+    Connection_n.config(font =("circular", 28),bg=bg_color,fg=Text_color)
+    Connection_n.place(x=1350, y=765)
+    Connection_v = Label(root, text=connection,anchor='e')
+    Connection_v.config(font =("circular", 28),bg=bg_color,fg=Text_color)
+    Connection_v.place(x=1350, y=815)
+
     def plotter(): 
-        while continuePlotting: 
-            print(df3)
-            df_plot = df3[-20:]
+        while (continuePlotting): 
+            df_plot = df[-20:]
             data_x = df_plot['time']
-            data_y = df_plot['data']
+            data_y = df_plot['radioactive']
             ax.cla() 
             ax.grid() 
             ax.plot(data_x,data_y, marker='o', color='orange') 
             graph.draw() 
             time.sleep(0.05) 
- 
+    def sensor_update():
+        global voltage
+        global connection
+        while (continuePlotting): 
+            if(df_last.empty):
+                voltage = 'STOP'
+                voltage_v.config(text = voltage)
+                voltage_v.config(text = "Disconnected")
+            else:
+                voltage = str(df_last.iloc[0]['voltage'])
+                connection = str(df_last.iloc[0]['connection'])
+                voltage_v.config(text = voltage)
+                Connection_v.config(text = connection)
+                
     def gui_handler(): 
         change_state() 
-        threading.Thread(target=serial_read).start() 
-        threading.Thread(target=plotter).start()
         threading.Thread(target=show_frames).start()
+        threading.Thread(target=serial_read).start() 
+        time.sleep(5)
+        threading.Thread(target=plotter).start()
+        threading.Thread(target=sensor_update).start()
+
 
     root.mainloop()
 
