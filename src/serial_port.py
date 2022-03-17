@@ -1,18 +1,12 @@
 import serial
 
-class camera:
+class series:
     serialString = ""    
-    def __init__(self, source, baudrate):
+    def __init__(self, source, baudrate, timeout):
         self.source = source
         self.baudrate = baudrate
+        self.timeout = timeout
     def connect(self):
-        self.port = serial.Serial(port = self.source, baudrate=self.baudrate,bytesize=8, timeout=2, stopbits=serial.STOPBITS_ONE)
-        while(1):
-            if(serialPort.in_waiting > 0):
-                # Read data out of the buffer until a carraige return / new line is found
-                serialString = serialPort.readline()
-                # Print the contents of the serial data
-                print(serialString.decode('Ascii'))
-                # Tell the device connected over the serial port that we recevied the data!
+        self.port = serial.Serial(port = self.source, baudrate=self.baudrate,bytesize=8, timeout= self.timeout, stopbits=serial.STOPBITS_ONE)
                 # The b at the beginning is used to indicate bytes!
 
