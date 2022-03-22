@@ -1,4 +1,4 @@
-from re import T
+from logging import warning
 from tkinter import *
 from tkinter import ttk
 import tkinter as tk
@@ -71,6 +71,7 @@ def serial_list():
 def serial_read():
     global df
     global df_last
+    warning = False
     start = time.time()
     ser = serial.Serial(port = Serial_port, baudrate=115200,bytesize=8, timeout=0.01, stopbits=serial.STOPBITS_ONE)
     while continuePlotting:
@@ -86,6 +87,12 @@ def serial_read():
             df = pd.concat([df,dict_data(n_dict,d_dict)])
             if(not(df.empty)):
                 df_last=df.tail(1)
+            if(df_last.iloc[0]['radioactive'] == -1 and df_last.iloc[0]['voltage'] == -1 and df_last.iloc[0]['connection'] == -1):
+                if(not(warning)):
+                    tk.messagebox.showwarning(title="Disconnected", message="Don't get any data from robot")
+                    warning = True
+            else:
+                warning = False
     ser.close()
 
 def split_data(data,index):
@@ -258,7 +265,7 @@ def app():
     voltage_v.config(font =("circular", 28),bg=bg_color,fg=Text_color)
     voltage_v.place(x=1350, y=665)
 
-    Connection_n = Label(root, text = "Connection sensor")
+    Connection_n = Label(root, text = "Connection status")
     Connection_n.config(font =("circular", 28),bg=bg_color,fg=Text_color)
     Connection_n.place(x=1350, y=765)
     Connection_v = Label(root, text=connection,anchor='e')
@@ -266,28 +273,30 @@ def app():
     Connection_v.place(x=1350, y=815)
 
     def plotter(): 
+        global df_last 
         while (continuePlotting): 
             df_plot = df[-20:]
             data_x = df_plot['time']
             data_y = df_plot['radioactive']
-            ax.cla() 
-            ax.grid() 
-            ax.plot(data_x,data_y, marker='o', color='orange') 
-            graph.draw() 
-            time.sleep(0.05) 
+            if(df_last.iloc[0]['connection'] == -1):
+                continue
+            else:
+                ax.cla() 
+                ax.grid() 
+                ax.plot(data_x,data_y, marker='o', color='orange') 
+                graph.draw() 
+                time.sleep(0.05) 
     def sensor_update():
         global voltage
         global connection
         while (continuePlotting): 
-            if(df_last.empty):
-                voltage = 'STOP'
-                voltage_v.config(text = voltage)
+            if(df_last.empty or df_last.iloc[0]['voltage'] == -1 or df_last.iloc[0]['connection'] == -1):
                 voltage_v.config(text = "Disconnected")
+                Connection_v.config(text = "Disconnected")
             else:
                 voltage = str(df_last.iloc[0]['voltage'])
-                connection = str(df_last.iloc[0]['connection'])
                 voltage_v.config(text = voltage)
-                Connection_v.config(text = connection)
+                Connection_v.config(text = "Connected")
                 
     def gui_handler(): 
         change_state() 
